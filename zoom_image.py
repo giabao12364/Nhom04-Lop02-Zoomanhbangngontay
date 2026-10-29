@@ -191,21 +191,44 @@ while True:
         y1 = int(thumb.y * h)
         x2 = int(index.x * w)
         y2 = int(index.y * h)
+    # Chi cap nhat zoom khi khong tam dung(NAM)
+    if not paused:
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        
         zoom = 1.0 + distance / 150
         zoom = max(1.0, min(zoom, 4.0))
         cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
         cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
         cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
         draw_hand_landmarks(frame, landmarks, w, h)
-    img_h, img_w = img.shape[:2]
-    new_w = int(img_w / zoom)
-    new_h = int(img_h / zoom)
-    x_start = (img_w - new_w) // 2
-    y_start = (img_h - new_h) // 2
+        # NGUOI 3 - 3.3: ZOOM THEO VI TRI NGON TRO(NAM)
+        img_h, img_w = img.shape[:2]
+
+        new_w = max(1, int(img_w / zoom))
+        new_h = max(1, int(img_h / zoom))
+
+        # Lay ngon tro lam tam vung crop
+        x_start = int(x2 - new_w / 2)
+        y_start = int(y2 - new_h / 2)
+
+        # Gioi han vung crop trong anh goc
+        x_start = max(0, min(x_start, img_w - new_w))
+        y_start = max(0, min(y_start, img_h - new_h))
+    
     crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
     zoomed_img = cv2.resize(crop, (img_w, img_h))
     cv2.putText(zoomed_img, "Zoom: {:.2f}x".format(zoom), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        # Hien thi trang thai dieu khien(NAM)
+    if paused:
+            cv2.putText(
+                zoomed_img,
+                "PAUSED",
+                (20, 80),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                (0, 0, 255),
+                2
+            )
     cv2.imshow("Image", zoomed_img)
     cv2.imshow("Webcam", frame)
     key = cv2.waitKey(20) & 0xFF
