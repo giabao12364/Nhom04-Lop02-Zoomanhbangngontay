@@ -144,6 +144,14 @@ while True:
     result = detector.detect(mp_image)
     if result.hand_landmarks and len(result.hand_landmarks) > 0:
         landmarks = result.hand_landmarks[0]
+        
+         # NGUOI 3: NHAN DIEN CU CHI
+        gesture = classify_gesture(landmarks)
+
+        # Xoe ban tay: reset muc zoom
+        if gesture == "RESET":
+            zoom = 1.0
+            
         thumb = landmarks[4]
         index = landmarks[8]
         x1 = int(thumb.x * w)
