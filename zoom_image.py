@@ -133,7 +133,7 @@ while True:
 
                 # RESET: Dua anh ve trang thai ban dau
                 if gesture == "RESET" and not gesture_latched:
-                    zoom = 1.0
+                    reset_requested = True
                     paused = False
                     gesture_latched = True
 
