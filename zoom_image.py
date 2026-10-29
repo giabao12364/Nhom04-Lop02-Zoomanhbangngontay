@@ -135,6 +135,18 @@ options = vision.HandLandmarkerOptions(
 detector = vision.HandLandmarker.create_from_options(options)
 vid = cv2.VideoCapture(0)
 zoom = 1.0
+
+# NGUOI 3: Trang thai dieu khien(NAM)
+paused = False
+
+# Bien xu ly cu chi lap lai
+gesture_candidate = "NONE"
+gesture_count = 0
+gesture_latched = False
+
+# So khung hinh xac nhan cu chi
+GESTURE_THRESHOLD = 8
+
 while True:
     ret, frame = vid.read()
     frame = cv2.flip(frame, 1)
@@ -145,12 +157,33 @@ while True:
     if result.hand_landmarks and len(result.hand_landmarks) > 0:
         landmarks = result.hand_landmarks[0]
         
-         # NGUOI 3: NHAN DIEN CU CHI
-        gesture = classify_gesture(landmarks)
+            # NGUOI 3: XU LY CU CHI VA CHONG LAP(NAM)
+            gesture = classify_gesture(landmarks)
 
-        # Xoe ban tay: reset muc zoom
-        if gesture == "RESET":
-            zoom = 1.0
+            # Dem so khung hinh lien tiep cua cu chi
+            if gesture == gesture_candidate:
+                gesture_count += 1
+            else:
+                gesture_candidate = gesture
+                gesture_count = 1
+
+            # Chi xu ly khi cu chi du on dinh
+            if gesture_count >= GESTURE_THRESHOLD:
+
+                # RESET: Dua anh ve trang thai ban dau
+                if gesture == "RESET" and not gesture_latched:
+                    zoom = 1.0
+                    paused = False
+                    gesture_latched = True
+
+                # PAUSE: Tam dung / tiep tuc dieu khien
+                elif gesture == "PAUSE" and not gesture_latched:
+                    paused = not paused
+                    gesture_latched = True
+
+                # NONE: Cho phep nhan dien cu chi moi
+                elif gesture == "NONE":
+                    gesture_latched = False
             
         thumb = landmarks[4]
         index = landmarks[8]
