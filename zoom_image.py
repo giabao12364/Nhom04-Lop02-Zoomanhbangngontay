@@ -118,18 +118,18 @@ while True:
     if result.hand_landmarks and len(result.hand_landmarks) > 0:
         landmarks = result.hand_landmarks[0]
         
-            # NGUOI 3: XU LY CU CHI VA CHONG LAP(NAM)
-            gesture = classify_gesture(landmarks)
+        # NGUOI 3: XU LY CU CHI VA CHONG LAP(NAM)
+        gesture = classify_gesture(landmarks)
 
-            # Dem so khung hinh lien tiep cua cu chi
-            if gesture == gesture_candidate:
+        # Dem so khung hinh lien tiep cua cu chi
+        if gesture == gesture_candidate:
                 gesture_count += 1
-            else:
+        else:
                 gesture_candidate = gesture
                 gesture_count = 1
 
-            # Chi xu ly khi cu chi du on dinh
-            if gesture_count >= GESTURE_THRESHOLD:
+        # Chi xu ly khi cu chi du on dinh
+        if gesture_count >= GESTURE_THRESHOLD:
 
                 # RESET: Dua anh ve trang thai ban dau
                 if gesture == "RESET" and not gesture_latched:
