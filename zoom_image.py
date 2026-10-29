@@ -64,45 +64,6 @@ def classify_gesture(landmarks):
     # Cac truong hop khac
     return "NONE"
 
-def classify_gesture(landmarks):
-    """
-    Phan loai cu chi ban tay dua tren 21 landmark MediaPipe.
-
-    Tra ve:
-        RESET: Ban tay xoe
-        PAUSE: Ban tay nam
-        NONE: Cu chi khong hop le
-    """
-
-    # Kiem tra landmark
-    if landmarks is None or len(landmarks) != 21:
-        return "NONE"
-
-    # Kiem tra cac ngon tay co dang gap hay khong
-    # Ngon tro, giua, ap ut, ut
-    finger_tips = [8, 12, 16, 20]
-    finger_pips = [6, 10, 14, 18]
-
-    fingers_up = []
-
-    for tip, pip in zip(finger_tips, finger_pips):
-
-        # Toa do y nho hon nghia la ngon tay dang huong len
-        if landmarks[tip].y < landmarks[pip].y:
-            fingers_up.append(1)
-        else:
-            fingers_up.append(0)
-
-    # Xoe ban tay: ca 4 ngon tay deu huong len
-    if fingers_up == [1, 1, 1, 1]:
-        return "RESET"
-
-    # Nam ban tay: ca 4 ngon tay deu gap
-    if fingers_up == [0, 0, 0, 0]:
-        return "PAUSE"
-
-    # Cac truong hop khac
-    return "NONE"
 def draw_hand_landmarks(frame, landmarks, img_w, img_h, connections=HAND_CONNECTIONS):
     points = []
     for lm in landmarks:
