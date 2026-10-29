@@ -48,7 +48,6 @@ def classify_gesture(landmarks):
     fingers_up = []
 
     for tip, pip in zip(finger_tips, finger_pips):
-        # Y nho hon nghia la dau ngon tay huong len tren
         if landmarks[tip].y < landmarks[pip].y:
             fingers_up.append(1)
         else:
