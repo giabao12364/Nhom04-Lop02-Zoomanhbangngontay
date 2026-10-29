@@ -133,7 +133,7 @@ while True:
         else:
             gesture_candidate = gesture
             gesture_count = 1
-            gesture_latched = False  # Reset chot ngay khi doi cu chi (tranh bi ket trang thai)
+            gesture_latched = False  
 
         if gesture_count >= GESTURE_THRESHOLD and not gesture_latched:
             if gesture == "RESET":
