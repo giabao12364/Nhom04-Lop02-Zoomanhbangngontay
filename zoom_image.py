@@ -162,7 +162,7 @@ while True:
         cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
         cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
         draw_hand_landmarks(frame, landmarks, w, h)
-        # NGUOI 3 - 3.3: ZOOM THEO VI TRI NGON TRO(NAM)
+        # NGUOI 3: ZOOM THEO VI TRI NGON TRO(NAM)
         img_h, img_w = img.shape[:2]
 
         new_w = max(1, int(img_w / zoom))
