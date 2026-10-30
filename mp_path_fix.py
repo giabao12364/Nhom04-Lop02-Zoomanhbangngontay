@@ -1,8 +1,28 @@
 import sys
 import os
+import inspect
 
 sys.dont_write_bytecode = True
 os.environ.setdefault("PYTHONDONTWRITEBYTECODE", "1")
+
+
+def _get_entry_script(fallback=None):
+    """Tra ve script goc (do nguoi dung chay truc tiep), khong phai module duoc import."""
+    main_mod = sys.modules.get("__main__")
+    main_file = getattr(main_mod, "__file__", None)
+    if main_file and os.path.exists(main_file):
+        return main_file
+    if sys.argv and sys.argv[0] and os.path.exists(sys.argv[0]):
+        return sys.argv[0]
+    return fallback
+
+
+def _caller_is_main():
+    try:
+        frame = inspect.currentframe().f_back.f_back
+        return frame.f_globals.get("__name__") == "__main__"
+    except Exception:
+        return False
 
 
 def fix_windows_unicode_path(caller_file=None):
@@ -35,21 +55,16 @@ def fix_windows_unicode_path(caller_file=None):
             return False
         except UnicodeEncodeError:
             return True
+    if caller_file and _caller_is_main():
+        target = caller_file
+    else:
+        target = _get_entry_script(caller_file)
 
-    if caller_file is None:
-        caller_file = sys.argv[0]
-        if not caller_file or not os.path.exists(caller_file):
-            for frame_info in sys._current_frames().values():
-                f = frame_info.f_back
-                while f is not None:
-                    if f.f_globals.get("__name__") == "__main__":
-                        caller_file = f.f_globals.get("__file__") or caller_file
-                        break
-                    f = f.f_back
-                break
+    if not target:
+        return
 
     cwd = os.getcwd()
-    script = os.path.abspath(caller_file)
+    script = os.path.abspath(target)
     short_cwd = get_short_path(cwd)
     short_script = get_short_path(script)
     need_fix = (
@@ -63,6 +78,7 @@ def fix_windows_unicode_path(caller_file=None):
         env = os.environ.copy()
         env["_MP_FIX_DONE"] = "1"
         env["PYTHONDONTWRITEBYTECODE"] = "1"
+        env["PYTHONUNBUFFERED"] = "1"
         args = sys.argv[1:]
         cmd = [sys.executable, short_script] + args
         sys.stdout.flush()

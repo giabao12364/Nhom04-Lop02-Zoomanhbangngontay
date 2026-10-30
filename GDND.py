@@ -12,6 +12,7 @@ import numpy as np
 import cv2
 
 from mp_path_fix import fix_windows_unicode_path
+from zoom_image2 import run_zoom
 
 VALID_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
@@ -568,35 +569,6 @@ if __name__ == "__main__":
         print(f"[THANH CONG] Da chon anh: {selected_path}")
         print(f"[THONG TIN] Kich thuoc anh: {selected_img.shape[1]}x{selected_img.shape[0]} px")
         print(f"[WEBCAM] Da chon Camera Index: {selected_cam}")
-
-        cap, err = open_webcam_safe(selected_cam)
-        if cap is not None:
-            print("[HUONG DAN] Nhan phim 'q' hoac ESC tren cua so OpenCV de dong kiem dinh.")
-            while True:
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame = cv2.flip(frame, 1)
-                cv2.putText(
-                    frame,
-                    f"Camera {selected_cam} - Nhan 'q' de thoat",
-                    (15, 35),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (0, 255, 0),
-                    2
-                )
-                cv2.imshow("Kiem dinh Muc 1 - Anh da chon", selected_img)
-                cv2.imshow("Kiem dinh Muc 1 - Webcam", frame)
-                key = cv2.waitKey(20) & 0xFF
-                if key == ord("q") or key == 27:
-                    break
-            cap.release()
-            cv2.destroyAllWindows()
-        else:
-            print(f"[CANH BAO WEBCAM] {err}")
-            cv2.imshow("Kiem dinh Muc 1 - Anh da chon (Nhan phim bat ky de dong)", selected_img)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+        run_zoom(selected_img,selected_cam)
     else:
         print("[THONG BAO] Nguoi dung da huy chon anh/webcam.")
