@@ -52,6 +52,7 @@ options = vision.HandLandmarkerOptions(
 detector = vision.HandLandmarker.create_from_options(options)
 vid = cv2.VideoCapture(0)
 zoom = 1.0
+smooth_zoom=1.0
 while True:
     ret, frame = vid.read()
     frame = cv2.flip(frame, 1)
@@ -70,17 +71,23 @@ while True:
         distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
         zoom = 1.0 + distance / 150
         zoom = max(1.0, min(zoom, 4.0))
+        smooth_zoom=smooth_zoom+0.2*(zoom-smooth_zoom)
         cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
         cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
         cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
         draw_hand_landmarks(frame, landmarks, w, h)
+    else:
+        pass
     img_h, img_w = img.shape[:2]
-    new_w = int(img_w / zoom)
-    new_h = int(img_h / zoom)
+    new_w = int(img_w / smooth_zoom)
+    new_h = int(img_h / smooth_zoom)
     x_start = (img_w - new_w) // 2
     y_start = (img_h - new_h) // 2
     crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
-    zoomed_img = cv2.resize(crop, (img_w, img_h))
+    if crop.size>0:
+        zoomed_img = cv2.resize(crop, (img_w, img_h))
+    else:
+        zoomed_img=img.copy()
     cv2.putText(zoomed_img, "Zoom: {:.2f}x".format(zoom), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
     cv2.imshow("Image", zoomed_img)
     cv2.imshow("Webcam", frame)
