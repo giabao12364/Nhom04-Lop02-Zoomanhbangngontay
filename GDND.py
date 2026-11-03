@@ -12,7 +12,9 @@ import numpy as np
 import cv2
 
 from mp_path_fix import fix_windows_unicode_path
-from zoom_image2 import run_zoom
+from zoom_image2 import run_zoom as run_zoom_full
+from zoom_image import run_zoom as run_zoom_smooth
+from task2_image_pan import run_pan
 
 VALID_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
 
@@ -110,11 +112,11 @@ def scan_available_webcams(max_index=4):
     return available
 
 def select_image_dialog(initial_path="", default_cam_index=0):
-    result = {"img": None, "path": None, "cam_index": None}
+    result = {"img": None, "path": None, "cam_index": None, "mode": None}
 
     root = tk.Tk()
     root.title("Cấu hình Ảnh & Webcam - Hand Gesture Zoom")
-    root.geometry("580x440")
+    root.geometry("580x520")
     root.resizable(False, False)
     root.configure(bg="#1e1e2e")
 
@@ -127,8 +129,8 @@ def select_image_dialog(initial_path="", default_cam_index=0):
     sw = root.winfo_screenwidth()
     sh = root.winfo_screenheight()
     x_pos = (sw - 580) // 2
-    y_pos = (sh - 440) // 2
-    root.geometry(f"580x440+{x_pos}+{y_pos}")
+    y_pos = (sh - 520) // 2
+    root.geometry(f"580x520+{x_pos}+{y_pos}")
 
     path_var = tk.StringVar(master=root, value=initial_path)
     status_var = tk.StringVar(master=root, value="Chưa chọn ảnh nào.")
@@ -147,6 +149,13 @@ def select_image_dialog(initial_path="", default_cam_index=0):
 
     cam_var = tk.StringVar(master=root, value=default_cam_label)
     cam_status_var = tk.StringVar(master=root, value="Mặc định: Camera 0 (Nhấn 'Quét Cam' hoặc 'Thử Cam' để kiểm tra)")
+
+    mode_options_map = {
+        "Zoom mượt bằng khoảng cách ngón tay (Người 1)": "zoom",
+        "Di chuyển ảnh bằng ngón trỏ - Pan (Người 2)": "pan",
+        "Đầy đủ: Zoom + Pan + Cử chỉ (Người 3)": "full",
+    }
+    mode_var = tk.StringVar(master=root, value=list(mode_options_map.keys())[0])
 
     lbl_title = tk.Label(
         root,
@@ -303,6 +312,31 @@ def select_image_dialog(initial_path="", default_cam_index=0):
     )
     lbl_cam_status.pack(fill="x", padx=12, pady=(2, 2))
 
+    mode_section = tk.Frame(root, bg="#28283d", bd=0, highlightthickness=1, highlightbackground="#45475a")
+    mode_section.pack(fill="x", padx=30, pady=(4, 8), ipady=6)
+
+    mode_row = tk.Frame(mode_section, bg="#28283d")
+    mode_row.pack(fill="x", padx=12, pady=(6, 2))
+
+    lbl_mode = tk.Label(
+        mode_row,
+        text="Chế độ chạy:",
+        font=("Segoe UI", 9, "bold"),
+        fg="#cdd6f4",
+        bg="#28283d"
+    )
+    lbl_mode.pack(side="left", padx=(0, 8))
+
+    combo_mode = ttk.Combobox(
+        mode_row,
+        textvariable=mode_var,
+        values=list(mode_options_map.keys()),
+        state="readonly",
+        font=("Segoe UI", 9),
+        width=38
+    )
+    combo_mode.pack(side="left", fill="x", expand=True)
+
     def get_selected_cam_index():
         label = cam_var.get().strip()
         if label in cam_options_map:
@@ -311,6 +345,12 @@ def select_image_dialog(initial_path="", default_cam_index=0):
             if token.isdigit():
                 return int(token)
         return 0
+
+    def get_selected_mode():
+        label = mode_var.get().strip()
+        if label in mode_options_map:
+            return mode_options_map[label]
+        return "zoom"
 
     def on_test_cam():
         idx = get_selected_cam_index()
@@ -434,12 +474,14 @@ def select_image_dialog(initial_path="", default_cam_index=0):
             cap.release()
 
         result["cam_index"] = chosen_cam
+        result["mode"] = get_selected_mode()
         safe_close()
 
     def on_cancel():
         result["img"] = None
         result["path"] = None
         result["cam_index"] = None
+        result["mode"] = None
         safe_close()
 
     entry_path.bind("<Return>", on_confirm)
@@ -556,19 +598,25 @@ def select_image_dialog(initial_path="", default_cam_index=0):
         verify_file(initial_path, show_popup_on_error=False)
 
     root.mainloop()
-    return result["img"], result["path"], result["cam_index"]
+    return result["img"], result["path"], result["cam_index"], result["mode"]
 
 if __name__ == "__main__":
     if "SPYDER_ARGS" not in os.environ and "IPYKERNEL_CELL_NAME" not in os.environ:
         fix_windows_unicode_path(__file__)
 
     print("[TEST MUC 1] Dang mo cua so chon Anh & Webcam...")
-    selected_img, selected_path, selected_cam = select_image_dialog()
+    selected_img, selected_path, selected_cam, selected_mode = select_image_dialog()
 
     if selected_img is not None and selected_cam is not None:
         print(f"[THANH CONG] Da chon anh: {selected_path}")
         print(f"[THONG TIN] Kich thuoc anh: {selected_img.shape[1]}x{selected_img.shape[0]} px")
         print(f"[WEBCAM] Da chon Camera Index: {selected_cam}")
-        run_zoom(selected_img,selected_cam)
+        print(f"[CHE DO] {selected_mode}")
+        if selected_mode == "pan":
+            run_pan(selected_img, selected_cam)
+        elif selected_mode == "full":
+            run_zoom_full(selected_img, selected_cam)
+        else:
+            run_zoom_smooth(selected_img, selected_cam)
     else:
         print("[THONG BAO] Nguoi dung da huy chon anh/webcam.")
