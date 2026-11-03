@@ -16,6 +16,7 @@ ZOOM_SMOOTHING = 0.2
 ZOOM_MIN = 1.0
 ZOOM_MAX = 4.0
 PALM_RATIO_MAX = 1.2
+HAND_LOST_TIMEOUT = 10
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -35,11 +36,8 @@ def draw_hand_landmarks(frame, landmarks, img_w, img_h, connections=HAND_CONNECT
     for start, end in connections:
         if start < len(points) and end < len(points):
             cv2.line(frame, points[start], points[end], (0, 255, 0), 2)
-
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task")
-
-
 def run_zoom(img, cam_index=0):
     if img is None:
         print("[LOI] Anh dau vao khong hop le.")
@@ -68,6 +66,7 @@ def run_zoom(img, cam_index=0):
         return
     zoom = 1.0
     smooth_zoom = 1.0
+    hand_lost_frames = 0
     while True:
         ret, frame = vid.read()
         frame = cv2.flip(frame, 1)
@@ -76,6 +75,7 @@ def run_zoom(img, cam_index=0):
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = detector.detect(mp_image)
         if result.hand_landmarks and len(result.hand_landmarks) > 0:
+            hand_lost_frames = 0
             landmarks = result.hand_landmarks[0]
             thumb = landmarks[4]
             index = landmarks[8]
@@ -97,7 +97,9 @@ def run_zoom(img, cam_index=0):
             cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
             draw_hand_landmarks(frame, landmarks, w, h)
         else:
-            pass
+            hand_lost_frames += 1
+            if hand_lost_frames > HAND_LOST_TIMEOUT:
+                smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (ZOOM_MIN - smooth_zoom)
         img_h, img_w = img.shape[:2]
         new_w = max(1, int(img_w / smooth_zoom))
         new_h = max(1, int(img_h / smooth_zoom))
@@ -116,8 +118,6 @@ def run_zoom(img, cam_index=0):
     vid.release()
     detector.close()
     cv2.destroyAllWindows()
-
-
 if __name__ == "__main__":
     default_img = cv2.imread(r"C:\Picture\hoa.webp")
     run_zoom(default_img, 0)
