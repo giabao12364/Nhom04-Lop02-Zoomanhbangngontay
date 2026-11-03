@@ -13,6 +13,9 @@ import math
 import urllib.request
 
 ZOOM_SMOOTHING = 0.2
+ZOOM_MIN = 1.0
+ZOOM_MAX = 4.0
+PALM_RATIO_MAX = 1.2
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -81,9 +84,14 @@ def run_zoom(img, cam_index=0):
             x2 = int(index.x * w)
             y2 = int(index.y * h)
             distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
-            zoom = 1.0 + distance / 150
-            zoom = max(1.0, min(zoom, 4.0))
-            smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
+            palm_dx = (landmarks[9].x - landmarks[0].x) * w
+            palm_dy = (landmarks[9].y - landmarks[0].y) * h
+            palm = math.sqrt(palm_dx ** 2 + palm_dy ** 2)
+            if palm > 1e-6:
+                ratio = distance / palm
+                zoom = ZOOM_MIN + (ratio / PALM_RATIO_MAX) * (ZOOM_MAX - ZOOM_MIN)
+                zoom = max(ZOOM_MIN, min(zoom, ZOOM_MAX))
+                smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
             cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
             cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
             cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
