@@ -14,7 +14,7 @@ import urllib.request
 from collections import deque
 from zoom_log import ZoomLogger, plot_log
 
-ZOOM_SMOOTHING = 0.2
+ZOOM_SMOOTHING = 0.35
 ZOOM_MIN = 1.0
 ZOOM_MAX = 4.0
 PALM_RATIO_MAX = 1.2
@@ -23,11 +23,11 @@ ZOOM_DEAD_ZONE = 0.02
 LOG_ZOOM = True
 SMOOTH_MODE = "ema"         
 FPS_ASSUMED = 30.0
-ONE_EURO_MIN_CUTOFF = 1.5
-ONE_EURO_BETA = 0.02
+ONE_EURO_MIN_CUTOFF = 2.5
+ONE_EURO_BETA = 0.03
 ONE_EURO_D_CUTOFF = 1.0
-RATIO_MEDIAN_WINDOW = 5    
-ZOOM_MAX_STEP = 0.08         
+RATIO_MEDIAN_WINDOW = 3    
+ZOOM_MAX_STEP = 0.25         
 DETECT_WIDTH = 640           
 SHARPEN = True               
 
