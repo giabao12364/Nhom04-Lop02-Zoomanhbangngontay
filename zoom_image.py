@@ -11,6 +11,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 import math
 import urllib.request
+from collections import deque
 from zoom_log import ZoomLogger, plot_log
 
 ZOOM_SMOOTHING = 0.2
@@ -20,6 +21,15 @@ PALM_RATIO_MAX = 1.2
 HAND_LOST_TIMEOUT = 10
 ZOOM_DEAD_ZONE = 0.02
 LOG_ZOOM = True
+SMOOTH_MODE = "ema"         
+FPS_ASSUMED = 30.0
+ONE_EURO_MIN_CUTOFF = 1.5
+ONE_EURO_BETA = 0.02
+ONE_EURO_D_CUTOFF = 1.0
+RATIO_MEDIAN_WINDOW = 5    
+ZOOM_MAX_STEP = 0.08         
+DETECT_WIDTH = 640           
+SHARPEN = True               
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -39,6 +49,18 @@ def draw_hand_landmarks(frame, landmarks, img_w, img_h, connections=HAND_CONNECT
     for start, end in connections:
         if start < len(points) and end < len(points):
             cv2.line(frame, points[start], points[end], (0, 255, 0), 2)
+def median(values):
+    ordered = sorted(values)
+    return ordered[len(ordered) // 2]
+def one_euro_alpha(cutoff, dt):
+    tau = 1.0 / (2.0 * math.pi * cutoff)
+    return 1.0 / (1.0 + tau / dt)
+def one_euro_step(x, x_hat, dx_hat, dt):
+    dx = (x - x_hat) / dt
+    dx_hat = dx_hat + one_euro_alpha(ONE_EURO_D_CUTOFF, dt) * (dx - dx_hat)
+    cutoff = ONE_EURO_MIN_CUTOFF + ONE_EURO_BETA * abs(dx_hat)
+    x_hat = x_hat + one_euro_alpha(cutoff, dt) * (x - x_hat)
+    return x_hat, dx_hat
 MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
 MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task")
 def run_zoom(img, cam_index=0):
@@ -71,11 +93,19 @@ def run_zoom(img, cam_index=0):
     smooth_zoom = 1.0
     hand_lost_frames = 0
     logger = ZoomLogger() if LOG_ZOOM else None
+    ratio_history = deque(maxlen=RATIO_MEDIAN_WINDOW)
+    x_hat = ZOOM_MIN
+    dx_hat = 0.0
+    ratio_max = 0.0
     while True:
         ret, frame = vid.read()
         frame = cv2.flip(frame, 1)
         h, w, _ = frame.shape
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        if w > DETECT_WIDTH:
+            detect_frame = cv2.resize(frame, (DETECT_WIDTH, int(h * DETECT_WIDTH / w)))
+        else:
+            detect_frame = frame
+        rgb = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
         result = detector.detect(mp_image)
         if result.hand_landmarks and len(result.hand_landmarks) > 0:
@@ -93,10 +123,20 @@ def run_zoom(img, cam_index=0):
             palm = math.sqrt(palm_dx ** 2 + palm_dy ** 2)
             if palm > 1e-6:
                 ratio = distance / palm
-                zoom = ZOOM_MIN + (ratio / PALM_RATIO_MAX) * (ZOOM_MAX - ZOOM_MIN)
+                if ratio > ratio_max:
+                    ratio_max = ratio
+                ratio_history.append(ratio)
+                ratio_filtered = median(ratio_history)
+                zoom = ZOOM_MIN + (ratio_filtered / PALM_RATIO_MAX) * (ZOOM_MAX - ZOOM_MIN)
                 zoom = max(ZOOM_MIN, min(zoom, ZOOM_MAX))
                 if abs(zoom - smooth_zoom) > ZOOM_DEAD_ZONE:
-                    smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
+                    if SMOOTH_MODE == "one_euro":
+                        target, dx_hat = one_euro_step(zoom, x_hat, dx_hat, 1.0 / FPS_ASSUMED)
+                    else:
+                        target = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
+                    x_hat = target
+                    step = max(-ZOOM_MAX_STEP, min(target - smooth_zoom, ZOOM_MAX_STEP))
+                    smooth_zoom = smooth_zoom + step
                 if logger is not None:
                     logger.log(ratio, zoom, smooth_zoom)
             cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
@@ -114,7 +154,13 @@ def run_zoom(img, cam_index=0):
         y_start = (img_h - new_h) // 2
         crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
         if crop.size>0:
-            zoomed_img = cv2.resize(crop, (img_w, img_h))
+            if smooth_zoom > 1.2:
+                zoomed_img = cv2.resize(crop, (img_w, img_h), interpolation=cv2.INTER_CUBIC)
+            else:
+                zoomed_img = cv2.resize(crop, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
+            if SHARPEN and smooth_zoom > 1.2:
+                blur = cv2.GaussianBlur(zoomed_img, (0, 0), 3)
+                zoomed_img = cv2.addWeighted(zoomed_img, 1.5, blur, -0.5, 0)
         else:
             zoomed_img=img.copy()
         cv2.putText(zoomed_img, "Zoom: {:.2f}x".format(smooth_zoom), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -131,6 +177,8 @@ def run_zoom(img, cam_index=0):
         png_path = plot_log(csv_path)
         if png_path is not None:
             print("[LOG] Da ve bieu do so sanh:", png_path)
+    if ratio_max > 0:
+        print("[GOI Y] ratio lon nhat do duoc: {:.2f} (dat PALM_RATIO_MAX gan gia tri nay de dung het dai zoom)".format(ratio_max))
 if __name__ == "__main__":
     default_img = cv2.imread(r"C:\Picture\hoa.webp")
     run_zoom(default_img, 0)

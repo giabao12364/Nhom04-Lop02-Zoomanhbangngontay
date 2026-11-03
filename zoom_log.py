@@ -46,7 +46,7 @@ def plot_log(csv_path=LOG_CSV, out_png=LOG_PNG):
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(11, 7), sharex=True)
 
     ax1.plot(t, raw, color="#e64553", linewidth=1.0, alpha=0.7, label="Zoom tho (truoc lam muot)")
-    ax1.plot(t, smooth, color="#1e66f5", linewidth=2.2, label="Zoom da lam muot (EMA)")
+    ax1.plot(t, smooth, color="#1e66f5", linewidth=2.2, label="Zoom da lam muot (bo loc)")
     ax1.set_ylabel("Muc zoom (x)")
     ax1.set_title("So sanh muc zoom: truoc va sau khi lam muot")
     ax1.legend()
