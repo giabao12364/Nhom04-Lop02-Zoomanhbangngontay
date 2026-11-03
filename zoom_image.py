@@ -11,12 +11,15 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 import math
 import urllib.request
+from zoom_log import ZoomLogger, plot_log
 
 ZOOM_SMOOTHING = 0.2
 ZOOM_MIN = 1.0
 ZOOM_MAX = 4.0
 PALM_RATIO_MAX = 1.2
 HAND_LOST_TIMEOUT = 10
+ZOOM_DEAD_ZONE = 0.02
+LOG_ZOOM = True
 
 HAND_CONNECTIONS = [
     (0, 1), (1, 2), (2, 3), (3, 4),
@@ -67,6 +70,7 @@ def run_zoom(img, cam_index=0):
     zoom = 1.0
     smooth_zoom = 1.0
     hand_lost_frames = 0
+    logger = ZoomLogger() if LOG_ZOOM else None
     while True:
         ret, frame = vid.read()
         frame = cv2.flip(frame, 1)
@@ -91,7 +95,10 @@ def run_zoom(img, cam_index=0):
                 ratio = distance / palm
                 zoom = ZOOM_MIN + (ratio / PALM_RATIO_MAX) * (ZOOM_MAX - ZOOM_MIN)
                 zoom = max(ZOOM_MIN, min(zoom, ZOOM_MAX))
-                smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
+                if abs(zoom - smooth_zoom) > ZOOM_DEAD_ZONE:
+                    smooth_zoom = smooth_zoom + ZOOM_SMOOTHING * (zoom - smooth_zoom)
+                if logger is not None:
+                    logger.log(ratio, zoom, smooth_zoom)
             cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
             cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
             cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
@@ -118,6 +125,12 @@ def run_zoom(img, cam_index=0):
     vid.release()
     detector.close()
     cv2.destroyAllWindows()
+    if logger is not None:
+        csv_path = logger.save_csv()
+        print("[LOG] Da luu du lieu zoom:", csv_path)
+        png_path = plot_log(csv_path)
+        if png_path is not None:
+            print("[LOG] Da ve bieu do so sanh:", png_path)
 if __name__ == "__main__":
     default_img = cv2.imread(r"C:\Picture\hoa.webp")
     run_zoom(default_img, 0)
