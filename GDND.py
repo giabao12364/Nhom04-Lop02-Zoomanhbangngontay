@@ -12,11 +12,34 @@ import numpy as np
 import cv2
 
 from mp_path_fix import fix_windows_unicode_path
-from zoom_image2 import run_zoom as run_zoom_full
-from zoom_image import run_zoom as run_zoom_smooth
-from task2_image_pan import run_pan
+
+import zoom_image
+import task2_image_pan
+import zoom_image2
+
+import math
+import urllib.request
+from collections import deque
+import mediapipe as mp
+from mediapipe.tasks import python as mp_python
+from mediapipe.tasks.python import vision
 
 VALID_EXTENSIONS = (".png", ".jpg", ".jpeg", ".webp", ".bmp", ".tiff")
+
+MODE_OPTIONS = [
+    ("1", "zoom", "Zoom"),
+    ("2", "pan", "Pan"),
+    ("3", "full", "Full"),
+]
+
+MODE_DESCRIPTIONS = {
+    "zoom": "Zoom muot bang khoang cach ngon cai - ngon tro (Nguoi 1)",
+    "pan": "Di chuyen anh bang ngon tro - Pan (Nguoi 2)",
+    "full": "Day du: Zoom + Pan + Cu chi RESET/PAUSE (Nguoi 3)",
+}
+
+MODEL_URL = "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task"
+MODEL_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "hand_landmarker.task")
 
 def get_short_path_windows(long_path):
     if os.name != "nt" or not long_path:
@@ -112,11 +135,11 @@ def scan_available_webcams(max_index=4):
     return available
 
 def select_image_dialog(initial_path="", default_cam_index=0):
-    result = {"img": None, "path": None, "cam_index": None, "mode": None}
+    result = {"img": None, "path": None, "cam_index": None}
 
     root = tk.Tk()
     root.title("Cấu hình Ảnh & Webcam - Hand Gesture Zoom")
-    root.geometry("580x520")
+    root.geometry("580x450")
     root.resizable(False, False)
     root.configure(bg="#1e1e2e")
 
@@ -129,8 +152,8 @@ def select_image_dialog(initial_path="", default_cam_index=0):
     sw = root.winfo_screenwidth()
     sh = root.winfo_screenheight()
     x_pos = (sw - 580) // 2
-    y_pos = (sh - 520) // 2
-    root.geometry(f"580x520+{x_pos}+{y_pos}")
+    y_pos = (sh - 450) // 2
+    root.geometry(f"580x450+{x_pos}+{y_pos}")
 
     path_var = tk.StringVar(master=root, value=initial_path)
     status_var = tk.StringVar(master=root, value="Chưa chọn ảnh nào.")
@@ -149,13 +172,6 @@ def select_image_dialog(initial_path="", default_cam_index=0):
 
     cam_var = tk.StringVar(master=root, value=default_cam_label)
     cam_status_var = tk.StringVar(master=root, value="Mặc định: Camera 0 (Nhấn 'Quét Cam' hoặc 'Thử Cam' để kiểm tra)")
-
-    mode_options_map = {
-        "Zoom mượt bằng khoảng cách ngón tay (Người 1)": "zoom",
-        "Di chuyển ảnh bằng ngón trỏ - Pan (Người 2)": "pan",
-        "Đầy đủ: Zoom + Pan + Cử chỉ (Người 3)": "full",
-    }
-    mode_var = tk.StringVar(master=root, value=list(mode_options_map.keys())[0])
 
     lbl_title = tk.Label(
         root,
@@ -312,31 +328,6 @@ def select_image_dialog(initial_path="", default_cam_index=0):
     )
     lbl_cam_status.pack(fill="x", padx=12, pady=(2, 2))
 
-    mode_section = tk.Frame(root, bg="#28283d", bd=0, highlightthickness=1, highlightbackground="#45475a")
-    mode_section.pack(fill="x", padx=30, pady=(4, 8), ipady=6)
-
-    mode_row = tk.Frame(mode_section, bg="#28283d")
-    mode_row.pack(fill="x", padx=12, pady=(6, 2))
-
-    lbl_mode = tk.Label(
-        mode_row,
-        text="Chế độ chạy:",
-        font=("Segoe UI", 9, "bold"),
-        fg="#cdd6f4",
-        bg="#28283d"
-    )
-    lbl_mode.pack(side="left", padx=(0, 8))
-
-    combo_mode = ttk.Combobox(
-        mode_row,
-        textvariable=mode_var,
-        values=list(mode_options_map.keys()),
-        state="readonly",
-        font=("Segoe UI", 9),
-        width=38
-    )
-    combo_mode.pack(side="left", fill="x", expand=True)
-
     def get_selected_cam_index():
         label = cam_var.get().strip()
         if label in cam_options_map:
@@ -345,12 +336,6 @@ def select_image_dialog(initial_path="", default_cam_index=0):
             if token.isdigit():
                 return int(token)
         return 0
-
-    def get_selected_mode():
-        label = mode_var.get().strip()
-        if label in mode_options_map:
-            return mode_options_map[label]
-        return "zoom"
 
     def on_test_cam():
         idx = get_selected_cam_index()
@@ -474,14 +459,12 @@ def select_image_dialog(initial_path="", default_cam_index=0):
             cap.release()
 
         result["cam_index"] = chosen_cam
-        result["mode"] = get_selected_mode()
         safe_close()
 
     def on_cancel():
         result["img"] = None
         result["path"] = None
         result["cam_index"] = None
-        result["mode"] = None
         safe_close()
 
     entry_path.bind("<Return>", on_confirm)
@@ -492,7 +475,7 @@ def select_image_dialog(initial_path="", default_cam_index=0):
 
     btn_ok = tk.Button(
         btn_frame,
-        text="Mở ảnh & Bắt đầu",
+        text="Tiếp tục →",
         command=on_confirm,
         font=("Segoe UI", 10, "bold"),
         bg="#89b4fa",
@@ -598,25 +581,326 @@ def select_image_dialog(initial_path="", default_cam_index=0):
         verify_file(initial_path, show_popup_on_error=False)
 
     root.mainloop()
-    return result["img"], result["path"], result["cam_index"], result["mode"]
+    return result["img"], result["path"], result["cam_index"]
+
+def draw_mode_hud(frame, mode):
+    frame_h, frame_w = frame.shape[:2]
+
+    overlay = frame.copy()
+    cv2.rectangle(overlay, (0, 0), (frame_w, 34), (24, 24, 38), -1)
+    cv2.addWeighted(overlay, 0.8, frame, 0.2, 0, frame)
+
+    x_pos = 12
+    for key, value, label in MODE_OPTIONS:
+        text = f"{key}. {label}"
+        (text_w, _), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.55, 2)
+        if value == mode:
+            cv2.rectangle(frame, (x_pos - 6, 4), (x_pos + text_w + 6, 30), (137, 180, 250), -1)
+            cv2.putText(frame, text, (x_pos, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (17, 17, 27), 2)
+        else:
+            cv2.putText(frame, text, (x_pos, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (166, 173, 200), 1)
+        x_pos += text_w + 26
+
+    hint = "Phim 1/2/3: doi che do | Q: thoat"
+    (hint_w, _), _ = cv2.getTextSize(hint, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+    cv2.putText(frame, hint, (frame_w - hint_w - 12, 23), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (166, 173, 200), 1)
+
+
+def new_state_zoom():
+    return {
+        "smooth": 1.0,
+        "lost": 0,
+        "history": deque(maxlen=zoom_image.RATIO_MEDIAN_WINDOW),
+        "x_hat": zoom_image.ZOOM_MIN,
+        "dx_hat": 0.0,
+        "ratio_max": 0.0,
+    }
+
+
+def step_zoom(frame, landmarks, img, st, logger):
+    frame_h, frame_w = frame.shape[:2]
+
+    if landmarks is not None:
+        st["lost"] = 0
+        thumb = landmarks[4]
+        index = landmarks[8]
+        x1 = int(thumb.x * frame_w)
+        y1 = int(thumb.y * frame_h)
+        x2 = int(index.x * frame_w)
+        y2 = int(index.y * frame_h)
+
+        distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+        palm_dx = (landmarks[9].x - landmarks[0].x) * frame_w
+        palm_dy = (landmarks[9].y - landmarks[0].y) * frame_h
+        palm = math.sqrt(palm_dx ** 2 + palm_dy ** 2)
+
+        if palm > 1e-6:
+            ratio = distance / palm
+            if ratio > st["ratio_max"]:
+                st["ratio_max"] = ratio
+            st["history"].append(ratio)
+            zoom = zoom_image.ZOOM_MIN + (zoom_image.median(st["history"]) / zoom_image.PALM_RATIO_MAX) * (zoom_image.ZOOM_MAX - zoom_image.ZOOM_MIN)
+            zoom = max(zoom_image.ZOOM_MIN, min(zoom, zoom_image.ZOOM_MAX))
+            if abs(zoom - st["smooth"]) > zoom_image.ZOOM_DEAD_ZONE:
+                if zoom_image.SMOOTH_MODE == "one_euro":
+                    target, st["dx_hat"] = zoom_image.one_euro_step(zoom, st["x_hat"], st["dx_hat"], 1.0 / zoom_image.FPS_ASSUMED)
+                else:
+                    target = st["smooth"] + zoom_image.ZOOM_SMOOTHING * (zoom - st["smooth"])
+                st["x_hat"] = target
+                move = max(-zoom_image.ZOOM_MAX_STEP, min(target - st["smooth"], zoom_image.ZOOM_MAX_STEP))
+                st["smooth"] = st["smooth"] + move
+            if logger is not None:
+                logger.log(ratio, zoom, st["smooth"])
+
+        cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
+        cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
+        cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
+        zoom_image.draw_hand_landmarks(frame, landmarks, frame_w, frame_h)
+    else:
+        st["lost"] += 1
+        if st["lost"] > zoom_image.HAND_LOST_TIMEOUT:
+            st["smooth"] = st["smooth"] + zoom_image.ZOOM_SMOOTHING * (zoom_image.ZOOM_MIN - st["smooth"])
+
+    img_h, img_w = img.shape[:2]
+    new_w = max(1, int(img_w / st["smooth"]))
+    new_h = max(1, int(img_h / st["smooth"]))
+    x_start = (img_w - new_w) // 2
+    y_start = (img_h - new_h) // 2
+    crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
+
+    if crop.size > 0:
+        if st["smooth"] > 1.2:
+            display = cv2.resize(crop, (img_w, img_h), interpolation=cv2.INTER_CUBIC)
+            if zoom_image.SHARPEN:
+                blurred = cv2.GaussianBlur(display, (0, 0), 3)
+                display = cv2.addWeighted(display, 1.5, blurred, -0.5, 0)
+        else:
+            display = cv2.resize(crop, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
+    else:
+        display = img.copy()
+
+    cv2.putText(display, "Zoom: {:.2f}x".format(st["smooth"]), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    return display
+
+
+def new_state_pan():
+    return {"zoom": 2.0, "offset_x": 0.0, "offset_y": 0.0, "prev_x": None, "prev_y": None}
+
+
+def step_pan(frame, landmarks, img, st):
+    frame_h, frame_w = frame.shape[:2]
+
+    if landmarks is not None:
+        index_tip = landmarks[8]
+        finger_x = index_tip.x * frame_w
+        finger_y = index_tip.y * frame_h
+        if st["prev_x"] is None or st["prev_y"] is None:
+            st["prev_x"], st["prev_y"] = float(finger_x), float(finger_y)
+
+        smooth_x = 0.3 * finger_x + 0.7 * st["prev_x"]
+        smooth_y = 0.3 * finger_y + 0.7 * st["prev_y"]
+        st["offset_x"] -= (smooth_x - st["prev_x"]) * 2.0
+        st["offset_y"] -= (smooth_y - st["prev_y"]) * 2.0
+        st["prev_x"], st["prev_y"] = smooth_x, smooth_y
+
+        cv2.circle(frame, (int(finger_x), int(finger_y)), 10, (0, 255, 0), -1)
+        task2_image_pan.draw_hand_landmarks(frame, landmarks, frame_w, frame_h)
+    else:
+        st["prev_x"], st["prev_y"] = None, None
+
+    img_h, img_w = img.shape[:2]
+    new_w = max(1, int(img_w / st["zoom"]))
+    new_h = max(1, int(img_h / st["zoom"]))
+
+    st["offset_x"] = max(0.0, min(st["offset_x"], float(img_w - new_w)))
+    st["offset_y"] = max(0.0, min(st["offset_y"], float(img_h - new_h)))
+
+    x_start = int(st["offset_x"])
+    y_start = int(st["offset_y"])
+    crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
+    display = cv2.resize(crop, (img_w, img_h), interpolation=cv2.INTER_LINEAR)
+    cv2.putText(display, f"Zoom: {st['zoom']:.1f}x | Offset X: {int(st['offset_x'])} Y: {int(st['offset_y'])}", (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+    return display
+
+
+def new_state_full():
+    return {
+        "zoom": 1.0,
+        "paused": False,
+        "candidate": "NONE",
+        "count": 0,
+        "latched": False,
+        "center_x": None,
+        "center_y": None,
+    }
+
+
+def step_full(frame, landmarks, img, st):
+    img_h, img_w = img.shape[:2]
+    if st["center_x"] is None:
+        st["center_x"], st["center_y"] = img_w // 2, img_h // 2
+
+    frame_h, frame_w = frame.shape[:2]
+    if landmarks is not None:
+        gesture = zoom_image2.classify_gesture(landmarks)
+        if gesture == st["candidate"]:
+            st["count"] += 1
+        else:
+            st["candidate"] = gesture
+            st["count"] = 1
+            st["latched"] = False
+        if st["count"] >= 8 and not st["latched"]:
+            if gesture == "RESET":
+                st["zoom"] = 1.0
+                st["paused"] = False
+                st["center_x"], st["center_y"] = img_w // 2, img_h // 2
+                st["latched"] = True
+            elif gesture == "PAUSE":
+                st["paused"] = not st["paused"]
+                st["latched"] = True
+
+        thumb = landmarks[4]
+        index = landmarks[8]
+        x1 = int(thumb.x * frame_w)
+        y1 = int(thumb.y * frame_h)
+        x2 = int(index.x * frame_w)
+        y2 = int(index.y * frame_h)
+        if not st["paused"] and gesture != "RESET":
+            st["center_x"] = int(index.x * img_w)
+            st["center_y"] = int(index.y * img_h)
+            distance = math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2)
+            target_zoom = max(1.0, min(1.0 + distance / 150, 4.0))
+            st["zoom"] = 0.8 * st["zoom"] + 0.2 * target_zoom
+        cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
+        cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
+        cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
+        zoom_image2.draw_hand_landmarks(frame, landmarks, frame_w, frame_h)
+
+    new_w = max(1, int(img_w / st["zoom"]))
+    new_h = max(1, int(img_h / st["zoom"]))
+    x_start = max(0, min(int(st["center_x"] - new_w // 2), img_w - new_w))
+    y_start = max(0, min(int(st["center_y"] - new_h // 2), img_h - new_h))
+    crop = img[y_start:y_start + new_h, x_start:x_start + new_w]
+    display = cv2.resize(crop, (img_w, img_h))
+    cv2.putText(display, "Zoom: {:.2f}x".format(st["zoom"]), (20, 40), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    if st["paused"]:
+        cv2.putText(display, "PAUSED", (20, 80), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+    return display
+
+
+def run_live(img, cam_index=0, initial_mode="zoom"):
+    if img is None:
+        print("[LOI] Anh dau vao khong hop le.")
+        return
+
+    if not os.path.exists(MODEL_PATH):
+        print("[INFO] Dang tai model HandLandmarker (~10MB)...")
+        try:
+            urllib.request.urlretrieve(MODEL_URL, MODEL_PATH)
+            print("[INFO] Tai model thanh cong:", MODEL_PATH)
+        except Exception as e:
+            print("[LOI] Khong the tai model:", e)
+            return
+
+    base_options = mp_python.BaseOptions(model_asset_path=MODEL_PATH)
+    options = vision.HandLandmarkerOptions(
+        base_options=base_options,
+        num_hands=1,
+        min_hand_detection_confidence=0.7,
+        min_hand_presence_confidence=0.7,
+        min_tracking_confidence=0.7
+    )
+    detector = vision.HandLandmarker.create_from_options(options)
+
+    vid, cam_err = open_webcam_safe(cam_index)
+    if cam_err:
+        print("[LOI]", cam_err)
+        detector.close()
+        return
+
+    mode = initial_mode
+    states = {
+        "zoom": new_state_zoom(),
+        "pan": new_state_pan(),
+        "full": new_state_full(),
+    }
+    logger = zoom_image.ZoomLogger() if zoom_image.LOG_ZOOM else None
+
+    print("=== DANG CHAY - DOI CHE DO NGAY TRONG CUA SO CAMERA ===")
+    for key, value, label in MODE_OPTIONS:
+        print(f"   Phim {key}: {MODE_DESCRIPTIONS[value]}")
+    print("   Phim Q: thoat chuong trinh")
+    print(f"[MAC DINH] Che do dau tien: {MODE_DESCRIPTIONS[mode]}")
+
+    while True:
+        ret, frame = vid.read()
+        if not ret or frame is None:
+            break
+
+        frame = cv2.flip(frame, 1)
+        frame_h, frame_w = frame.shape[:2]
+
+        if frame_w > zoom_image.DETECT_WIDTH:
+            detect_frame = cv2.resize(frame, (zoom_image.DETECT_WIDTH, int(frame_h * zoom_image.DETECT_WIDTH / frame_w)))
+        else:
+            detect_frame = frame
+
+        rgb = cv2.cvtColor(detect_frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+        result = detector.detect(mp_image)
+
+        landmarks = None
+        if result.hand_landmarks and len(result.hand_landmarks) > 0:
+            landmarks = result.hand_landmarks[0]
+
+        if mode == "pan":
+            display = step_pan(frame, landmarks, img, states["pan"])
+        elif mode == "full":
+            display = step_full(frame, landmarks, img, states["full"])
+        else:
+            display = step_zoom(frame, landmarks, img, states["zoom"], logger)
+
+        draw_mode_hud(frame, mode)
+        cv2.imshow("Webcam", frame)
+        cv2.imshow("Image", display)
+
+        key = cv2.waitKey(20) & 0xFF
+        if key == ord("q"):
+            break
+        if key in (ord("1"), ord("2"), ord("3")):
+            chosen = MODE_OPTIONS[key - ord("1")][1]
+            if chosen != mode:
+                mode = chosen
+                print(f"[CHE DO] Da chuyen sang: {MODE_DESCRIPTIONS[mode]}")
+
+    vid.release()
+    detector.close()
+    cv2.destroyAllWindows()
+
+    if logger is not None:
+        csv_path = logger.save_csv()
+        print("[LOG] Da luu du lieu zoom:", csv_path)
+        png_path = zoom_image.plot_log(csv_path)
+        if png_path is not None:
+            print("[LOG] Da ve bieu do so sanh:", png_path)
+
+    ratio_max = states["zoom"]["ratio_max"]
+    if ratio_max > 0:
+        print("[GOI Y] ratio lon nhat do duoc: {:.2f} (dat PALM_RATIO_MAX gan gia tri nay de dung het dai zoom)".format(ratio_max))
 
 if __name__ == "__main__":
     if "SPYDER_ARGS" not in os.environ and "IPYKERNEL_CELL_NAME" not in os.environ:
         fix_windows_unicode_path(__file__)
 
     print("[TEST MUC 1] Dang mo cua so chon Anh & Webcam...")
-    selected_img, selected_path, selected_cam, selected_mode = select_image_dialog()
+    selected_img, selected_path, selected_cam = select_image_dialog()
 
     if selected_img is not None and selected_cam is not None:
         print(f"[THANH CONG] Da chon anh: {selected_path}")
         print(f"[THONG TIN] Kich thuoc anh: {selected_img.shape[1]}x{selected_img.shape[0]} px")
         print(f"[WEBCAM] Da chon Camera Index: {selected_cam}")
-        print(f"[CHE DO] {selected_mode}")
-        if selected_mode == "pan":
-            run_pan(selected_img, selected_cam)
-        elif selected_mode == "full":
-            run_zoom_full(selected_img, selected_cam)
-        else:
-            run_zoom_smooth(selected_img, selected_cam)
+
+        print("[HUONG DAN] Trong cua so Webcam, bam phim 1/2/3 de doi che do chay theo thoi gian thuc.")
+        run_live(selected_img, selected_cam, initial_mode="zoom")
     else:
         print("[THONG BAO] Nguoi dung da huy chon anh/webcam.")
