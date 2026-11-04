@@ -617,7 +617,7 @@ def new_state_zoom():
     }
 
 
-def step_zoom(frame, landmarks, img, st, logger):
+def step_zoom(frame, landmarks, img, st):
     frame_h, frame_w = frame.shape[:2]
 
     if landmarks is not None:
@@ -649,8 +649,6 @@ def step_zoom(frame, landmarks, img, st, logger):
                 st["x_hat"] = target
                 move = max(-zoom_image.ZOOM_MAX_STEP, min(target - st["smooth"], zoom_image.ZOOM_MAX_STEP))
                 st["smooth"] = st["smooth"] + move
-            if logger is not None:
-                logger.log(ratio, zoom, st["smooth"])
 
         cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
         cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
@@ -824,7 +822,6 @@ def run_live(img, cam_index=0, initial_mode="zoom"):
         "pan": new_state_pan(),
         "full": new_state_full(),
     }
-    logger = zoom_image.ZoomLogger() if zoom_image.LOG_ZOOM else None
 
     print("=== DANG CHAY - DOI CHE DO NGAY TRONG CUA SO CAMERA ===")
     for key, value, label in MODE_OPTIONS:
@@ -858,7 +855,7 @@ def run_live(img, cam_index=0, initial_mode="zoom"):
         elif mode == "full":
             display = step_full(frame, landmarks, img, states["full"])
         else:
-            display = step_zoom(frame, landmarks, img, states["zoom"], logger)
+            display = step_zoom(frame, landmarks, img, states["zoom"])
 
         draw_mode_hud(frame, mode)
         cv2.imshow("Webcam", frame)
@@ -876,13 +873,6 @@ def run_live(img, cam_index=0, initial_mode="zoom"):
     vid.release()
     detector.close()
     cv2.destroyAllWindows()
-
-    if logger is not None:
-        csv_path = logger.save_csv()
-        print("[LOG] Da luu du lieu zoom:", csv_path)
-        png_path = zoom_image.plot_log(csv_path)
-        if png_path is not None:
-            print("[LOG] Da ve bieu do so sanh:", png_path)
 
     ratio_max = states["zoom"]["ratio_max"]
     if ratio_max > 0:

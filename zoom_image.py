@@ -12,7 +12,6 @@ from mediapipe.tasks.python import vision
 import math
 import urllib.request
 from collections import deque
-from zoom_log import ZoomLogger, plot_log
 
 ZOOM_SMOOTHING = 0.35
 ZOOM_MIN = 1.0
@@ -20,7 +19,6 @@ ZOOM_MAX = 4.0
 PALM_RATIO_MAX = 1.2
 HAND_LOST_TIMEOUT = 10
 ZOOM_DEAD_ZONE = 0.02
-LOG_ZOOM = True
 SMOOTH_MODE = "ema"         
 FPS_ASSUMED = 30.0
 ONE_EURO_MIN_CUTOFF = 2.5
@@ -92,7 +90,6 @@ def run_zoom(img, cam_index=0):
     zoom = 1.0
     smooth_zoom = 1.0
     hand_lost_frames = 0
-    logger = ZoomLogger() if LOG_ZOOM else None
     ratio_history = deque(maxlen=RATIO_MEDIAN_WINDOW)
     x_hat = ZOOM_MIN
     dx_hat = 0.0
@@ -137,8 +134,6 @@ def run_zoom(img, cam_index=0):
                     x_hat = target
                     step = max(-ZOOM_MAX_STEP, min(target - smooth_zoom, ZOOM_MAX_STEP))
                     smooth_zoom = smooth_zoom + step
-                if logger is not None:
-                    logger.log(ratio, zoom, smooth_zoom)
             cv2.circle(frame, (x1, y1), 10, (255, 0, 0), -1)
             cv2.circle(frame, (x2, y2), 10, (0, 255, 0), -1)
             cv2.line(frame, (x1, y1), (x2, y2), (255, 255, 0), 3)
@@ -171,12 +166,6 @@ def run_zoom(img, cam_index=0):
     vid.release()
     detector.close()
     cv2.destroyAllWindows()
-    if logger is not None:
-        csv_path = logger.save_csv()
-        print("[LOG] Da luu du lieu zoom:", csv_path)
-        png_path = plot_log(csv_path)
-        if png_path is not None:
-            print("[LOG] Da ve bieu do so sanh:", png_path)
     if ratio_max > 0:
         print("[GOI Y] ratio lon nhat do duoc: {:.2f} (dat PALM_RATIO_MAX gan gia tri nay de dung het dai zoom)".format(ratio_max))
 if __name__ == "__main__":
